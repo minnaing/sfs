@@ -1,0 +1,154 @@
+#!/bin/bash
+
+# --- [ Simple File Synchronizer ] ---
+# Author        : Han Min Naing
+# Veriosn       : 0.1.0
+# Documentation : README.md
+
+# -*- -*- -*- -*- -*- -*- -*- -*- -*- -*-
+
+# Below variable are supposed to be overwritten by RC file
+
+RSYNC=`which rsync`
+RSYNC_ARGS='-vrltgoDh --progress'
+IGNORE_FILE=''
+IGNORE_HIDDEN=true
+KEY_FILE=''
+
+# Do not change below code unless you know what you are doing
+
+VERSION='0.1.0'
+
+RC_FILE='.sfsrc'
+LOCAL_PATH=`PWD`/
+RC_FILE="$LOCAL_PATH/$RC_FILE"
+
+ERROR=127
+OK=0
+
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+WHITE='\033[0;37m'
+NC='\033[0m'
+
+# -*- -*- -*- -*- -*- -*- -*- -*- -*- -*-
+
+function init(){
+    if [ -f "$RC_FILE" ];
+    then
+        echo -e " ${RED}ERROR: $RC_FILE already exists.${NC}"
+        exit $ERROR
+    fi
+
+    if [ -z "$1" ] || [ -z "$2" ];
+    then
+        echo -e " ${RED}Error: Not enough argumants.${NC}"
+        echo -e " ${RED}Usage: `basename $0` init [user@hostname] [path] ${NC}"
+        exit $ERROR
+    fi
+
+    echo -e " ${WHITE} Remote Host  : ${GREEN}$1${NC}"
+    echo -e " ${WHITE} Remote Path  : ${GREEN}$2${NC}"
+
+    # Need to improve
+    echo -e "REMOTE_HOST=\"$1\"\nREMOTE_PATH=\"$2\"" > "$RC_FILE"
+}
+
+function read_config(){
+    if [ -f "$RC_FILE" ];
+    then
+        source "$RC_FILE"
+    else
+        echo -e " ${RED}ERROR: $RC_FILE file is missing.${NC}"
+        exit $ERROR
+    fi
+}
+
+function do_rsync(){
+    # A convenient function for rsync
+    # with arguments
+    if $IGNORE_HIDDEN ;
+    then
+        RSYNC_ARGS+=" --exclude=\".*\""
+    fi
+
+    if [ -n "$IGNORE_FILE" ];
+    then
+        if [ ! -f "$IGNORE_FILE" ];
+        then
+            echo -e " ${RED}ERROR: $IGNORE_FILE does't exist.${NC}"
+            exit $ERROR
+        fi
+        RSYNC_ARGS+=" --exclude-from=$IGNORE_FILE"
+    fi
+
+    if [ -n "$KEY_FILE" ];
+    then
+        KEY_FILE=$(abs_path "$KEY_FILE")
+        if [ ! -f "$KEY_FILE" ];
+        then
+            echo -e " ${RED}ERROR: $KEY_FILE does't exists.${NC}"
+            exit $ERROR
+        fi
+        RSYNC_ARGS+=" -e \"ssh -i $KEY_FILE\""
+    fi
+
+    $RSYNC $RSYNC_ARGS "$1" "$2"
+}
+
+function push(){
+    read_config
+    do_rsync $LOCAL_PATH $REMOTE_HOST:$REMOTE_PATH
+}
+
+function pull(){
+    read_config
+    do_rsync $REMOTE_HOST:$REMOTE_PATH $LOCAL_PATH
+}
+
+function dossh(){
+    read_config
+    ssh -t $REMOTE_HOST "cd $REMOTE_PATH; /bin/bash"
+}
+
+function info(){
+    read_config
+    echo -e " ${WHITE} --- [ ${GREEN} $REMOTE_HOST ${WHITE} ] --- ${NC}"
+	echo -e " ${WHITE} Remote Path : ${GREEN}$REMOTE_PATH${NC}"
+	echo -e " ${WHITE} Local Path  : ${GREEN}$LOCAL_PATH${NC}"
+}
+
+function version(){
+    echo -e " sfs $VERSION"
+}
+
+function usage(){
+    echo -e " ${RED}Usage: `basename $0` [push|pull|info|ssh|init]${NC}"
+    exit $ERROR
+}
+
+# -*- -*- -*- -*- -*- -*- -*- -*- -*- -*-
+
+if [ -z $1 ]
+then
+    usage
+fi
+
+case $1 in
+    "init" )
+        init "$2" "$3";;
+    "push" | "upload")
+        push;;
+    "pull" | "download")
+        pull;;
+    "ssh"  )
+        dossh;;
+    "info" | "config")
+        info;;
+    "version" )
+        version;;
+    *      )
+        usage;;
+esac
+
+exit $?
